@@ -461,6 +461,7 @@
           <tr>
             <th onclick="sortBy('regId')"><span class="sort-icon">↕</span> رقم التسجيل</th>
             <th onclick="sortBy('timestamp')"><span class="sort-icon">↕</span> التاريخ</th>
+            <th onclick="sortBy('timestamp')"><span class="sort-icon">↕</span> الوقت</th>
             <th onclick="sortBy('project')"><span class="sort-icon">↕</span> المشروع</th>
             <th onclick="sortBy('fullname')"><span class="sort-icon">↕</span> الاسم</th>
             <th onclick="sortBy('phone')"><span class="sort-icon">↕</span> الموبايل</th>
@@ -900,13 +901,31 @@
   }
 
   // ── TABLE ──
+    function getDatePart(timestamp) {
+  if (!timestamp) return '—';
+
+  const value = toWest(String(timestamp))
+    .replace(/[,،]/g, '')
+    .trim();
+
+  return value.split(/\s+/)[0] || '—';
+}
+
+  function getTimePart(timestamp) {
+    if (!timestamp) return '—';
+
+    const value = toWest(timestamp).trim();
+    const parts = value.split(/\s+/);
+
+    return parts.length > 1 ? parts.slice(1).join(' ') : '—';
+  }
   function renderTable() {
     const start = (currentPage-1)*PAGE_SIZE;
     const page  = filtered.slice(start, start+PAGE_SIZE);
     const tbody = document.getElementById('table-body');
 
     if (!page.length) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="11">لا توجد نتائج</td></tr>';
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="12">لا توجد نتائج</td></tr>';
       document.getElementById('pagination').innerHTML = '';
       return;
     }
@@ -914,7 +933,8 @@
     tbody.innerHTML = page.map((r,i) => `
       <tr onclick="openModal(filteredRef[${(currentPage-1)*PAGE_SIZE + i}])" title="اضغط لعرض التفاصيل والصور">
         <td><span class="badge-reg">${r.regId||'—'}</span></td>
-        <td>${toWest(r.timestamp)||'—'}</td>
+        <td>${getDatePart(r.timestamp)}</td>
+        <td>${getTimePart(r.timestamp)}</td>
         <td>${r.project||'—'}</td>
         <td>${r.fullname||'—'}</td>
         <td dir="ltr">${toWest(r.phone)||'—'}</td>
