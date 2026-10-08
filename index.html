@@ -426,8 +426,8 @@
   <!-- TIME SERIES CHART -->
   <div class="charts-row-2">
     <div class="chart-card">
-      <div class="chart-title">📈 معدل التسجيل يومياً</div>
-      <div class="chart-wrap" style="height:200px"><canvas id="chart-timeseries"></canvas></div>
+      <div class="chart-title">📈 معدل التسجيل أسبوعياً</div>
+      <div class="chart-wrap" style="height:260px"><canvas id="chart-timeseries"></canvas></div>
     </div>
   </div>
 
@@ -523,7 +523,7 @@
       const json = await res.json();
       if (json.status === 'ok') {
         allData = json.data || [];
-        document.getElementById('last-update').textContent = 'آخر تحديث: ' + new Date().toLocaleTimeString('ar-EG');
+        document.getElementById('last-update').textContent = 'آخر تحديث: ' + new Date().toLocaleTimeString('en-US');
         populateProjectFilter();
         applyFilters();
         startAutoRefresh();
@@ -610,39 +610,57 @@
   function updateTimeSeries(data) {
     data = data || allData;
     const toWestern = s => String(s).replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 1632));
-    // جمع التسجيلات per يوم
+    // يدعم: D/M/YYYY (ar-EG)، YYYY/M/D، YYYY-MM-DD
+    const parseDay = raw => {
+      const w = toWestern(raw).replace(/[\u200e\u200f\u00a0]/g, ' ');
+      let m = w.match(/(\d{1,2})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{4})/);
+      if (m) return new Date(+m[3], +m[2]-1, +m[1]);
+      m = w.match(/(\d{4})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{1,2})/);
+      if (m) return new Date(+m[1], +m[2]-1, +m[3]);
+      return null;
+    };
+    const key = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
     const byDate = {};
+    let minD = null, maxD = null;
     data.forEach(r => {
       if (!r.timestamp) return;
-      const w = toWestern(r.timestamp);
-      // استخرج التاريخ فقط (أول جزء قبل الفاصلة أو الفراغ)
-      const day = w.split('،')[0].split(',')[0].split(' ')[0].trim();
-      if (day) byDate[day] = (byDate[day] || 0) + 1;
+      const d = parseDay(r.timestamp);
+      if (!d || isNaN(d)) return;
+      byDate[key(d)] = (byDate[key(d)] || 0) + 1;
+      if (!minD || d < minD) minD = d;
+      if (!maxD || d > maxD) maxD = d;
     });
-    const sortedDates = Object.keys(byDate).sort((a, b) => {
-      // التاريخ المخزّن شكله YYYY/M/D (زي "2026/7/7")، مش D/M/YYYY
-      const p = s => { const x = s.split('/'); return x.length===3 ? new Date(+x[0], +x[1]-1, +x[2]) : new Date(s); };
-      return p(a) - p(b);
-    });
-    const vals = sortedDates.map(d => byDate[d]);
-    const labels = sortedDates;
+    const labels = [], vals = [];
+    if (minD) {
+      // أسابيع تبدأ من السبت
+      const startOfWeek = d => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay()+1) % 7)); return x; };
+      const first = startOfWeek(minD), last = startOfWeek(maxD);
+      for (let w = new Date(first); w <= last; w.setDate(w.getDate()+7)) {
+        let sum = 0;
+        for (let i = 0; i < 7; i++) { const d = new Date(w); d.setDate(d.getDate()+i); sum += byDate[key(d)] || 0; }
+        const end = new Date(w); end.setDate(end.getDate()+6);
+        labels.push(w.getDate() + '/' + (w.getMonth()+1) + ' – ' + end.getDate() + '/' + (end.getMonth()+1));
+        vals.push(sum);
+      }
+    }
     if (chartTimeSeries) chartTimeSeries.destroy();
     chartTimeSeries = new Chart(document.getElementById('chart-timeseries'), {
       type: 'line',
       data: {
         labels: labels,
         datasets: [{ data: vals, borderColor: '#1a56a0', backgroundColor: 'rgba(26,86,160,0.12)',
-          fill: true, tension: 0.4, pointBackgroundColor: '#1a56a0',
-          pointRadius: 5, pointHoverRadius: 7, borderWidth: 2.5 }]
+          fill: true, tension: 0.3, pointBackgroundColor: '#1a56a0',
+          pointRadius: 4, pointHoverRadius: 7, borderWidth: 2.5 }]
       },
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false }, tooltip: { callbacks: {
+          title: items => items[0].label,
           label: ctx => ` ${ctx.parsed.y} تسجيل`
         }}},
         scales: {
-          y: { beginAtZero: true, ticks: { stepSize: 1, font: { family: 'Cairo' } }, grid: { color: '#eef2f8' } },
-          x: { ticks: { font: { family: 'Cairo', size: 11 } }, grid: { display: false } }
+          y: { beginAtZero: true, ticks: { precision: 0, font: { family: 'Cairo' } }, grid: { color: '#eef2f8' } },
+          x: { ticks: { font: { family: 'Cairo', size: 11 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 }, grid: { display: false } }
         },
         interaction: { intersect: false, mode: 'index' }
       }
@@ -715,7 +733,7 @@
     ];
     filtered.forEach(r => {
       dataSheet.addRow({
-        regId: r.regId || '—', timestamp: r.timestamp || '—', project: r.project || '—',
+        regId: r.regId || '—', timestamp: toWest(r.timestamp).replace(/[\u200e\u200f\u00a0]/g,' ') || '—', project: r.project || '—',
         fullname: r.fullname || '—', phone: r.phone || '—', address: r.address || '—',
         building: r.building || '—', apartment: r.apartment || '—',
         ctype: toLabel(r.kitchen), stickerNum: r.stickerNum || '—',
@@ -858,6 +876,20 @@
   });
 
   // ── FILTERS ──
+  // يحوّل timestamp (D/M/YYYY، h:mm:ss م) لـ milliseconds للترتيب الصحيح
+  function tsToMs(raw) {
+    const w = String(raw||'').replace(/[٠-٩]/g, d => d.charCodeAt(0) - 1632).replace(/[\u200e\u200f\u00a0]/g, ' ');
+    let m = w.match(/(\d{1,2})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{4})/), y, mo, d;
+    if (m) { d=+m[1]; mo=+m[2]; y=+m[3]; }
+    else { m = w.match(/(\d{4})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{1,2})/); if (!m) return 0; y=+m[1]; mo=+m[2]; d=+m[3]; }
+    const t = w.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    let h = t ? +t[1] : 0; const mi = t ? +t[2] : 0, se = t && t[3] ? +t[3] : 0;
+    if (/م/.test(w) && h < 12) h += 12;
+    if (/ص/.test(w) && h === 12) h = 0;
+    return new Date(y, mo-1, d, h, mi, se).getTime();
+  }
+  const regNum = r => parseInt(String(r||'').replace(/\D/g,''), 10) || 0;
+
   function applyFilters() {
     const q     = document.getElementById('search-input').value.trim().toLowerCase();
     const projs = getSelectedProjects();
@@ -872,6 +904,14 @@
 
     // sort
     filtered.sort((a,b) => {
+      if (sortCol === 'timestamp') {
+        const d = tsToMs(a.timestamp) - tsToMs(b.timestamp) || regNum(a.regId) - regNum(b.regId);
+        return sortAsc ? d : -d;
+      }
+      if (sortCol === 'regId') {
+        const d = regNum(a.regId) - regNum(b.regId);
+        return sortAsc ? d : -d;
+      }
       let va = a[sortCol]||'', vb = b[sortCol]||'';
       return sortAsc ? String(va).localeCompare(String(vb),'ar') : String(vb).localeCompare(String(va),'ar');
     });
